@@ -264,6 +264,70 @@
             color: rgba(255, 255, 255, 0.7);
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
             z-index: 1000;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .save-btn {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .save-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .save-btn:active {
+            transform: translateY(0);
+        }
+
+        .save-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(76, 175, 80, 0.9);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            z-index: 2000;
+            animation: slideIn 0.3s ease, slideOut 0.3s ease 2.7s;
+            opacity: 0;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
         }
 
         @media (max-width: 1024px) {
@@ -333,7 +397,10 @@
         </div>
     </div>
 
-    <div class="footer">Made by vlone 🔥</div>
+    <div class="footer">
+        <span>Made by vlone 🔥</span>
+        <button class="save-btn" id="saveBtn">💾 Save Progress</button>
+    </div>
 
     <script>
         // Audio context for sounds
@@ -384,6 +451,117 @@
             oscillator.stop(audioContext.currentTime + 0.2);
         }
 
+        // Save and Load System
+        function saveGame() {
+            const saveData = {
+                cookies: game.cookies,
+                totalClicks: game.totalClicks,
+                clickMultiplier: game.clickMultiplier,
+                lastSaveTime: Date.now(),
+                upgrades: game.upgrades.map(u => ({
+                    id: u.id,
+                    owned: u.owned,
+                    cost: u.cost
+                })),
+                achievements: game.achievements.map(a => ({
+                    id: a.id,
+                    unlocked: a.unlocked
+                }))
+            };
+            
+            const saveString = JSON.stringify(saveData);
+            document.cookie = `cookieClickerSave=${saveString};max-age=31536000;path=/`;
+            
+            showSaveNotification();
+        }
+
+        function loadGame() {
+            const cookies = document.cookie.split('; ').find(row => row.startsWith('cookieClickerSave='));
+            
+            if (cookies) {
+                try {
+                    const saveData = JSON.parse(cookies.split('=')[1]);
+                    
+                    // Calculate offline progress
+                    const timeAway = Date.now() - saveData.lastSaveTime;
+                    const secondsAway = timeAway / 1000;
+                    
+                    // Restore data
+                    game.cookies = saveData.cookies || 0;
+                    game.totalClicks = saveData.totalClicks || 0;
+                    game.clickMultiplier = saveData.clickMultiplier || 1;
+                    
+                    // Restore upgrades
+                    if (saveData.upgrades) {
+                        saveData.upgrades.forEach(savedUpgrade => {
+                            const upgrade = game.upgrades.find(u => u.id === savedUpgrade.id);
+                            if (upgrade) {
+                                upgrade.owned = savedUpgrade.owned;
+                                upgrade.cost = savedUpgrade.cost;
+                            }
+                        });
+                    }
+                    
+                    // Restore achievements
+                    if (saveData.achievements) {
+                        saveData.achievements.forEach(savedAchievement => {
+                            const achievement = game.achievements.find(a => a.id === savedAchievement.id);
+                            if (achievement) {
+                                achievement.unlocked = savedAchievement.unlocked;
+                            }
+                        });
+                    }
+                    
+                    // Calculate offline earnings
+                    calculateCPS();
+                    const offlineEarnings = game.cookiesPerSecond * secondsAway;
+                    game.cookies += offlineEarnings;
+                    
+                    // Show offline progress notification
+                    if (offlineEarnings > 0 && secondsAway > 60) {
+                        showOfflineNotification(offlineEarnings, secondsAway);
+                    }
+                    
+                    calculateClickPower();
+                    
+                } catch (e) {
+                    console.error('Failed to load save:', e);
+                }
+            }
+        }
+
+        function showSaveNotification() {
+            const notification = document.createElement('div');
+            notification.className = 'save-notification';
+            notification.textContent = '✓ Progress Saved!';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => notification.remove(), 3000);
+        }
+
+        function showOfflineNotification(earnings, seconds) {
+            const notification = document.createElement('div');
+            notification.className = 'save-notification';
+            
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            
+            let timeText = '';
+            if (hours > 0) {
+                timeText = `${hours} hour${hours > 1 ? 's' : ''}`;
+            } else if (minutes > 0) {
+                timeText = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+            } else {
+                timeText = `${Math.floor(seconds)} seconds`;
+            }
+            
+            notification.innerHTML = `🎉 Welcome Back!<br>You earned ${formatNumber(earnings)} cookies while away (${timeText})`;
+            notification.style.padding = '20px 30px';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => notification.remove(), 5000);
+        }
+
         // Mouse tilt effect
         const gameContainer = document.getElementById('gameContainer');
         const mainSection = document.getElementById('mainSection');
@@ -405,6 +583,7 @@
             cookiesPerSecond: 0,
             clickPower: 1,
             clickMultiplier: 1,
+            lastSaveTime: Date.now(),
             upgrades: [
                 { id: 0, name: 'Click Multiplier', icon: '👆', cost: 50, owned: 0, cps: 0, isMultiplier: true, multiplierValue: 1, desc: 'Doubles your click power permanently!' },
                 { id: 1, name: 'Cursor', icon: '☝️', cost: 15, owned: 0, cps: 0, isAutoClicker: true, clicksPerSecond: 1, desc: 'Auto-clicks the cookie for you' },
@@ -565,8 +744,18 @@
         }
 
         document.getElementById('cookieBtn').addEventListener('click', clickCookie);
+        document.getElementById('saveBtn').addEventListener('click', saveGame);
 
+        // Load game on startup
+        loadGame();
         renderUpgrades();
+        updateDisplay();
+        checkAchievements();
+
+        // Auto-save every 30 seconds
+        setInterval(() => {
+            saveGame();
+        }, 30000);
 
         // Auto-clicker system
         setInterval(() => {
